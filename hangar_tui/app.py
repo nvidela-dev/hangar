@@ -22,7 +22,7 @@ from .models import GitStatus, Project, Todo, TodoStatus
 from .services.git import get_git_info, get_recent_commits, get_open_prs, count_open_prs
 from .services.github import open_github_prs
 from .services.todos import count_pending_todos, load_todos, save_todos
-from .services.tmux import open_in_tmux, open_in_tmux_lazygit
+from .services.tmux import open_in_tmux, open_in_tmux_claude, open_in_tmux_lazygit, open_in_tmux_nvim
 
 HANGAR_PATH = Path.home() / "Hangar"
 STASH_PATH = Path.home() / "Stash"
@@ -310,19 +310,14 @@ class HangarApp(App):
     #project-table {
         height: 1fr;
     }
-    .location-label {
-        text-align: center;
-        text-style: bold;
-        padding: 1;
-        background: $primary;
-        color: $text;
-    }
     """
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("enter", "open_tmux", "Open"),
+        Binding("c", "open_claude", "Claude"),
         Binding("l", "open_lazygit", "Lazygit"),
+        Binding("n", "open_nvim", "Neovim"),
         Binding("g", "open_github", "PRs"),
         Binding("t", "open_todos", "Todos"),
         Binding("s", "open_status", "Status"),
@@ -341,7 +336,6 @@ class HangarApp(App):
     def compose(self) -> ComposeResult:
         yield Header()
         with Container(id="main-container"):
-            yield Label("Hangar", id="location-label", classes="location-label")
             yield DataTable(id="project-table")
         yield Footer()
 
@@ -393,10 +387,6 @@ class HangarApp(App):
                 pr_str,
             )
 
-        # Update header
-        label = self.query_one("#location-label", Label)
-        label.update("Stash" if self.viewing_stash else "Hangar")
-
     def _get_selected_project(self) -> Project | None:
         table = self.query_one("#project-table", DataTable)
         if table.row_count == 0:
@@ -432,6 +422,14 @@ class HangarApp(App):
             else:
                 self.notify("No GitHub remote", severity="warning")
 
+    def action_open_claude(self) -> None:
+        project = self._get_selected_project()
+        if project:
+            if open_in_tmux_claude(project.name, project.path):
+                self.notify(f"Opened {project.name} with Claude")
+            else:
+                self.notify("Failed to open Claude", severity="error")
+
     def action_open_lazygit(self) -> None:
         project = self._get_selected_project()
         if project:
@@ -439,6 +437,14 @@ class HangarApp(App):
                 self.notify(f"Opened {project.name} with lazygit")
             else:
                 self.notify("Failed to open lazygit", severity="error")
+
+    def action_open_nvim(self) -> None:
+        project = self._get_selected_project()
+        if project:
+            if open_in_tmux_nvim(project.name, project.path):
+                self.notify(f"Opened {project.name} with neovim")
+            else:
+                self.notify("Failed to open neovim", severity="error")
 
     def action_open_todos(self) -> None:
         project = self._get_selected_project()
