@@ -4,6 +4,25 @@ import subprocess
 from pathlib import Path
 
 
+def open_github_prs(project_path: Path) -> bool:
+    """Open the project's GitHub PR list in the browser.
+
+    Uses `gh pr list --web` which opens the PR page directly.
+
+    Returns True if successful.
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "list", "--web"],
+            cwd=str(project_path),
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+
+
 def open_github(project_path: Path) -> bool:
     """Open the project's GitHub repo in the browser.
 

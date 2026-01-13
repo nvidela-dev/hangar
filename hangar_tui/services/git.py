@@ -121,3 +121,8 @@ def get_open_prs(path: Path) -> list[dict]:
         return []
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
         return []
+
+
+def count_open_prs(path: Path) -> int:
+    """Count open PRs for a project."""
+    return len(get_open_prs(path))

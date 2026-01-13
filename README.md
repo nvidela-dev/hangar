@@ -40,7 +40,8 @@ hangar
 |-----|--------|
 | `↑/↓` or `j/k` | Navigate projects |
 | `Enter` | Open in tmux (Claude \| nvim) |
-| `g` | Open GitHub repo |
+| `l` | Open in tmux (Claude \| lazygit) |
+| `g` | Open GitHub PRs in browser |
 | `t` | Project todos |
 | `s` | Project status |
 | `m` | Move to Stash / Hangar |

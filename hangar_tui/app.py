@@ -19,10 +19,10 @@ from textual.widgets import (
 )
 
 from .models import GitStatus, Project, Todo, TodoStatus
-from .services.git import get_git_info, get_recent_commits, get_open_prs
-from .services.github import open_github
+from .services.git import get_git_info, get_recent_commits, get_open_prs, count_open_prs
+from .services.github import open_github_prs
 from .services.todos import count_pending_todos, load_todos, save_todos
-from .services.tmux import open_in_tmux
+from .services.tmux import open_in_tmux, open_in_tmux_lazygit
 
 HANGAR_PATH = Path.home() / "Hangar"
 STASH_PATH = Path.home() / "Stash"
@@ -322,7 +322,8 @@ class HangarApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("enter", "open_tmux", "Open"),
-        Binding("g", "open_github", "GitHub"),
+        Binding("l", "open_lazygit", "Lazygit"),
+        Binding("g", "open_github", "PRs"),
         Binding("t", "open_todos", "Todos"),
         Binding("s", "open_status", "Status"),
         Binding("m", "move_project", "Move"),
@@ -346,7 +347,7 @@ class HangarApp(App):
 
     def on_mount(self) -> None:
         table = self.query_one("#project-table", DataTable)
-        table.add_columns("", "Project", "Branch", "Last Commit", "Todos")
+        table.add_columns("", "Project", "Branch", "Last Commit", "Todos", "PRs")
         table.cursor_type = "row"
         self._refresh_projects()
 
@@ -364,6 +365,7 @@ class HangarApp(App):
             if item.is_dir() and item.name not in EXCLUDED_DIRS:
                 git_info = get_git_info(item)
                 todo_count = count_pending_todos(item.name)
+                pr_count = count_open_prs(item) if git_info.remote_url else 0
                 self.projects.append(Project(
                     name=item.name,
                     path=item,
@@ -373,6 +375,7 @@ class HangarApp(App):
                     last_commit_message=git_info.last_commit_message,
                     remote_url=git_info.remote_url,
                     todo_count=todo_count,
+                    pr_count=pr_count,
                 ))
 
         table = self.query_one("#project-table", DataTable)
@@ -380,12 +383,14 @@ class HangarApp(App):
         for proj in self.projects:
             date_str = proj.last_commit_date.strftime("%Y-%m-%d") if proj.last_commit_date else "-"
             todo_str = str(proj.todo_count) if proj.todo_count > 0 else "-"
+            pr_str = f"[cyan]{proj.pr_count}[/]" if proj.pr_count > 0 else "-"
             table.add_row(
                 f"[{proj.status_color}]{proj.status_icon}[/]",
                 proj.name,
                 proj.branch or "-",
                 date_str,
                 todo_str,
+                pr_str,
             )
 
         # Update header
@@ -420,12 +425,20 @@ class HangarApp(App):
         project = self._get_selected_project()
         if project:
             if project.remote_url:
-                if open_github(project.path):
-                    self.notify(f"Opening {project.name} on GitHub")
+                if open_github_prs(project.path):
+                    self.notify(f"Opening {project.name} PRs")
                 else:
-                    self.notify("Failed to open GitHub", severity="error")
+                    self.notify("Failed to open GitHub PRs", severity="error")
             else:
                 self.notify("No GitHub remote", severity="warning")
+
+    def action_open_lazygit(self) -> None:
+        project = self._get_selected_project()
+        if project:
+            if open_in_tmux_lazygit(project.name, project.path):
+                self.notify(f"Opened {project.name} with lazygit")
+            else:
+                self.notify("Failed to open lazygit", severity="error")
 
     def action_open_todos(self) -> None:
         project = self._get_selected_project()

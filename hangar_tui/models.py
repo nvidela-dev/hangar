@@ -51,6 +51,7 @@ class Project:
     last_commit_message: Optional[str] = None
     todo_count: int = 0
     remote_url: Optional[str] = None
+    pr_count: int = 0
 
     @property
     def status_icon(self) -> str:
