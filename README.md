@@ -44,6 +44,7 @@ hangar
 | `g` | Open GitHub PRs in browser |
 | `t` | Project todos |
 | `s` | Project status |
+| `i` | View README |
 | `m` | Move to Stash / Hangar |
 | `Tab` | Toggle Hangar/Stash view |
 | `r` | Refresh |
