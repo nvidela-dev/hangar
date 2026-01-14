@@ -442,7 +442,6 @@ class AddProjectScreen(ModalScreen[str | None]):
 class HangarApp(App):
     """Main Hangar TUI application."""
 
-    TITLE = "Hangar"
     CSS = """
     Screen {
         background: $surface;
@@ -468,6 +467,7 @@ class HangarApp(App):
         Binding("m", "move_project", "Move"),
         Binding("a", "add_project", "Add"),
         Binding("tab", "toggle_view", "Toggle View"),
+        Binding("]", "toggle_view", "Toggle View", show=False),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
         Binding("r", "refresh", "Refresh"),
@@ -477,6 +477,14 @@ class HangarApp(App):
         super().__init__()
         self.viewing_stash = False
         self.projects: list[Project] = []
+
+    @property
+    def title(self) -> str:
+        return "Stash" if getattr(self, "viewing_stash", False) else "Hangar"
+
+    @title.setter
+    def title(self, value: str) -> None:
+        pass  # Title is computed dynamically, ignore setter
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -546,6 +554,7 @@ class HangarApp(App):
 
     def action_toggle_view(self) -> None:
         self.viewing_stash = not self.viewing_stash
+        self.query_one(Header).refresh()
         self._refresh_projects()
 
     def action_open_tmux(self) -> None:
