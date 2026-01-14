@@ -126,3 +126,50 @@ def get_open_prs(path: Path) -> list[dict]:
 def count_open_prs(path: Path) -> int:
     """Count open PRs for a project."""
     return len(get_open_prs(path))
+
+
+import re
+
+
+def validate_ssh_url(url: str) -> tuple[bool, str]:
+    """Validate a GitHub SSH URL and extract repo name.
+
+    Returns (is_valid, repo_name or error_message).
+    """
+    # Match git@github.com:owner/repo.git or git@github.com:owner/repo
+    pattern = r"^git@github\.com:[\w.-]+/([\w.-]+?)(?:\.git)?$"
+    match = re.match(pattern, url)
+    if match:
+        return True, match.group(1)
+    return False, "Invalid SSH URL. Expected format: git@github.com:owner/repo.git"
+
+
+def clone_repo(url: str, dest: Path) -> tuple[bool, str]:
+    """Clone a repository from SSH URL to destination.
+
+    Returns (success, message).
+    """
+    is_valid, result = validate_ssh_url(url)
+    if not is_valid:
+        return False, result
+
+    repo_name = result
+    target_path = dest / repo_name
+
+    if target_path.exists():
+        return False, f"Directory '{repo_name}' already exists"
+
+    try:
+        result = subprocess.run(
+            ["git", "clone", url, str(target_path)],
+            capture_output=True,
+            text=True,
+            timeout=120,  # Allow 2 minutes for clone
+        )
+        if result.returncode == 0:
+            return True, repo_name
+        return False, result.stderr.strip() or "Clone failed"
+    except subprocess.TimeoutExpired:
+        return False, "Clone timed out"
+    except Exception as e:
+        return False, str(e)
