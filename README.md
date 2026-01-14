@@ -45,7 +45,7 @@ hangar
 | `t` | Project todos |
 | `s` | Project status |
 | `m` | Move to Stash / Hangar |
-| `Tab` | Toggle Hangar/Stash view |
+| `Tab` or `]` | Toggle Hangar/Stash view |
 | `r` | Refresh |
 | `q` | Quit |
 
