@@ -5,7 +5,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import (
     DataTable,
@@ -15,6 +15,7 @@ from textual.widgets import (
     Label,
     ListItem,
     ListView,
+    Markdown,
     Static,
 )
 
@@ -296,6 +297,74 @@ class StatusScreen(ModalScreen):
         self.dismiss()
 
 
+class ReadmeScreen(ModalScreen):
+    """Modal screen showing project README."""
+
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+        Binding("q", "close", "Close"),
+        Binding("j", "scroll_down", "Down", show=False),
+        Binding("k", "scroll_up", "Up", show=False),
+    ]
+
+    CSS = """
+    ReadmeScreen {
+        align: center middle;
+    }
+    ReadmeScreen > Container {
+        width: 90%;
+        height: 90%;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    ReadmeScreen .title {
+        text-align: center;
+        text-style: bold;
+        padding-bottom: 1;
+    }
+    ReadmeScreen VerticalScroll {
+        height: 1fr;
+    }
+    ReadmeScreen .no-readme {
+        text-align: center;
+        color: $text-muted;
+        padding-top: 2;
+    }
+    """
+
+    def __init__(self, project: Project) -> None:
+        super().__init__()
+        self.project = project
+
+    def compose(self) -> ComposeResult:
+        with Container():
+            yield Label(f"README: {self.project.name}", classes="title")
+            yield VerticalScroll(id="readme-scroll")
+
+    def on_mount(self) -> None:
+        scroll = self.query_one("#readme-scroll", VerticalScroll)
+        readme_path = self.project.path / "README.md"
+
+        if readme_path.exists():
+            try:
+                content = readme_path.read_text()
+                scroll.mount(Markdown(content))
+            except Exception:
+                scroll.mount(Static("Failed to read README", classes="no-readme"))
+        else:
+            scroll.mount(Static("No README.md found", classes="no-readme"))
+
+    def action_close(self) -> None:
+        self.dismiss()
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#readme-scroll", VerticalScroll).scroll_down()
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#readme-scroll", VerticalScroll).scroll_up()
+
+
 class HangarApp(App):
     """Main Hangar TUI application."""
 
@@ -321,6 +390,7 @@ class HangarApp(App):
         Binding("g", "open_github", "PRs"),
         Binding("t", "open_todos", "Todos"),
         Binding("s", "open_status", "Status"),
+        Binding("i", "open_readme", "Readme"),
         Binding("m", "move_project", "Move"),
         Binding("tab", "toggle_view", "Toggle View"),
         Binding("j", "cursor_down", "Down", show=False),
@@ -455,6 +525,11 @@ class HangarApp(App):
         project = self._get_selected_project()
         if project:
             self.push_screen(StatusScreen(project))
+
+    def action_open_readme(self) -> None:
+        project = self._get_selected_project()
+        if project:
+            self.push_screen(ReadmeScreen(project))
 
     def action_move_project(self) -> None:
         project = self._get_selected_project()
