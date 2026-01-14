@@ -46,6 +46,7 @@ hangar
 | `s` | Project status |
 | `i` | View README |
 | `a` | Add project (clone from GitHub SSH URL) |
+| `.` | Edit CLAUDE.md config |
 | `m` | Move to Stash / Hangar |
 | `Tab` or `]` | Toggle Hangar/Stash view |
 | `r` | Refresh |
@@ -59,6 +60,16 @@ hangar
 | `e` | Edit todo |
 | `d` | Delete todo |
 | `Space` | Toggle status |
+| `Esc` | Close |
+
+### Config Panel
+| Key | Action |
+|-----|--------|
+| `↑/↓` or `j/k` | Navigate sections |
+| `a` | Add section |
+| `e` | Edit section |
+| `d` | Delete section |
+| `Ctrl+S` | Save (in edit mode) |
 | `Esc` | Close |
 
 ## Folder Structure
