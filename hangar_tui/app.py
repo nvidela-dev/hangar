@@ -17,6 +17,7 @@ from textual.widgets import (
     ListView,
     Markdown,
     Static,
+    TextArea,
 )
 
 from .models import GitStatus, Project, Todo, TodoStatus
@@ -24,6 +25,7 @@ from .services.git import get_git_info, get_recent_commits, get_open_prs, count_
 from .services.github import open_github_prs
 from .services.todos import count_pending_todos, load_todos, save_todos
 from .services.tmux import open_in_tmux, open_in_tmux_claude, open_in_tmux_lazygit, open_in_tmux_nvim
+from .services.claude_config import parse_claude_md, save_claude_md, ConfigSection
 
 HANGAR_PATH = Path.home() / "Hangar"
 STASH_PATH = Path.home() / "Stash"
@@ -439,6 +441,218 @@ class AddProjectScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class ConfigScreen(ModalScreen):
+    """Modal screen for viewing and editing CLAUDE.md sections."""
+
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+        Binding("q", "close", "Close"),
+        Binding("a", "add", "Add"),
+        Binding("e", "edit", "Edit"),
+        Binding("d", "delete", "Delete"),
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+    ]
+
+    CSS = """
+    ConfigScreen {
+        align: center middle;
+    }
+    ConfigScreen > Container {
+        width: 90%;
+        height: 90%;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    ConfigScreen .title {
+        text-align: center;
+        text-style: bold;
+        padding-bottom: 1;
+    }
+    ConfigScreen DataTable {
+        height: 1fr;
+    }
+    ConfigScreen .footer-hint {
+        text-align: center;
+        color: $text-muted;
+        padding-top: 1;
+    }
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.preamble = ""
+        self.sections: list[ConfigSection] = []
+
+    def compose(self) -> ComposeResult:
+        with Container():
+            yield Label("CLAUDE.md Configuration", classes="title")
+            yield DataTable(id="config-table")
+            yield Label("a:Add  e:Edit  d:Delete  Esc:Close", classes="footer-hint")
+
+    def on_mount(self) -> None:
+        self.preamble, self.sections = parse_claude_md()
+        table = self.query_one("#config-table", DataTable)
+        table.add_columns("Level", "Section", "Preview")
+        table.cursor_type = "row"
+        self._refresh_table()
+
+    def _refresh_table(self) -> None:
+        table = self.query_one("#config-table", DataTable)
+        table.clear()
+        for section in self.sections:
+            level_str = "#" * section.level
+            preview = section.content[:60].replace("\n", " ") + "..." if len(section.content) > 60 else section.content.replace("\n", " ")
+            table.add_row(level_str, section.title, preview)
+
+    def _save(self) -> bool:
+        return save_claude_md(self.preamble, self.sections)
+
+    def action_close(self) -> None:
+        self.dismiss()
+
+    def action_add(self) -> None:
+        self.app.push_screen(
+            ConfigEditScreen("Add Section", "", "", 2),
+            callback=self._on_add_complete,
+        )
+
+    def _on_add_complete(self, result: tuple[str, str, int] | None) -> None:
+        if result:
+            title, content, level = result
+            self.sections.append(ConfigSection(title=title, content=content, level=level))
+            if self._save():
+                self._refresh_table()
+            else:
+                self.app.notify("Failed to save", severity="error")
+
+    def action_edit(self) -> None:
+        table = self.query_one("#config-table", DataTable)
+        if table.row_count == 0:
+            return
+        row_idx = table.cursor_row
+        if 0 <= row_idx < len(self.sections):
+            section = self.sections[row_idx]
+            self.app.push_screen(
+                ConfigEditScreen("Edit Section", section.title, section.content, section.level),
+                callback=lambda r: self._on_edit_complete(row_idx, r),
+            )
+
+    def _on_edit_complete(self, row_idx: int, result: tuple[str, str, int] | None) -> None:
+        if result and 0 <= row_idx < len(self.sections):
+            title, content, level = result
+            self.sections[row_idx].title = title
+            self.sections[row_idx].content = content
+            self.sections[row_idx].level = level
+            if self._save():
+                self._refresh_table()
+            else:
+                self.app.notify("Failed to save", severity="error")
+
+    def action_delete(self) -> None:
+        table = self.query_one("#config-table", DataTable)
+        if table.row_count == 0:
+            return
+        row_idx = table.cursor_row
+        if 0 <= row_idx < len(self.sections):
+            self.sections.pop(row_idx)
+            if self._save():
+                self._refresh_table()
+            else:
+                self.app.notify("Failed to save", severity="error")
+
+    def action_cursor_down(self) -> None:
+        table = self.query_one("#config-table", DataTable)
+        table.action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        table = self.query_one("#config-table", DataTable)
+        table.action_cursor_up()
+
+
+class ConfigEditScreen(ModalScreen[tuple[str, str, int] | None]):
+    """Modal for editing a config section."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("ctrl+s", "save", "Save"),
+    ]
+
+    CSS = """
+    ConfigEditScreen {
+        align: center middle;
+    }
+    ConfigEditScreen > Container {
+        width: 80%;
+        height: 80%;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    ConfigEditScreen .title {
+        text-align: center;
+        text-style: bold;
+        padding-bottom: 1;
+    }
+    ConfigEditScreen .field-label {
+        padding-top: 1;
+        color: $primary;
+    }
+    ConfigEditScreen TextArea {
+        height: 1fr;
+    }
+    ConfigEditScreen .footer-hint {
+        text-align: center;
+        color: $text-muted;
+        padding-top: 1;
+    }
+    """
+
+    def __init__(self, title: str, section_title: str, content: str, level: int) -> None:
+        super().__init__()
+        self.title_text = title
+        self.section_title = section_title
+        self.content = content
+        self.level = level
+
+    def compose(self) -> ComposeResult:
+        with Container():
+            yield Label(self.title_text, classes="title")
+            yield Label("Section Title:", classes="field-label")
+            yield Input(value=self.section_title, id="title-input")
+            yield Label("Level (1-6):", classes="field-label")
+            yield Input(value=str(self.level), id="level-input")
+            yield Label("Content:", classes="field-label")
+            yield TextArea(self.content, id="content-area")
+            yield Label("Ctrl+S:Save  Esc:Cancel", classes="footer-hint")
+
+    def on_mount(self) -> None:
+        self.query_one("#title-input", Input).focus()
+
+    def action_save(self) -> None:
+        title = self.query_one("#title-input", Input).value.strip()
+        level_str = self.query_one("#level-input", Input).value.strip()
+        content = self.query_one("#content-area", TextArea).text
+
+        if not title:
+            self.app.notify("Title is required", severity="error")
+            return
+
+        try:
+            level = int(level_str)
+            if not 1 <= level <= 6:
+                raise ValueError()
+        except ValueError:
+            self.app.notify("Level must be 1-6", severity="error")
+            return
+
+        self.dismiss((title, content, level))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class HangarApp(App):
     """Main Hangar TUI application."""
 
@@ -466,6 +680,7 @@ class HangarApp(App):
         Binding("i", "open_readme", "Readme"),
         Binding("m", "move_project", "Move"),
         Binding("a", "add_project", "Add"),
+        Binding(".", "open_config", "Config"),
         Binding("tab", "toggle_view", "Toggle View"),
         Binding("]", "toggle_view", "Toggle View", show=False),
         Binding("j", "cursor_down", "Down", show=False),
@@ -644,6 +859,9 @@ class HangarApp(App):
             self._refresh_projects()
         else:
             self.notify(f"Clone failed: {message}", severity="error")
+
+    def action_open_config(self) -> None:
+        self.push_screen(ConfigScreen())
 
     def action_cursor_down(self) -> None:
         table = self.query_one("#project-table", DataTable)
