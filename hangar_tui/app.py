@@ -20,7 +20,7 @@ from textual.widgets import (
 )
 
 from .models import GitStatus, Project, Todo, TodoStatus
-from .services.git import get_git_info, get_recent_commits, get_open_prs, count_open_prs
+from .services.git import get_git_info, get_recent_commits, get_open_prs, count_open_prs, clone_repo, validate_ssh_url
 from .services.github import open_github_prs
 from .services.todos import count_pending_todos, load_todos, save_todos
 from .services.tmux import open_in_tmux, open_in_tmux_claude, open_in_tmux_lazygit, open_in_tmux_nvim
@@ -365,6 +365,80 @@ class ReadmeScreen(ModalScreen):
         self.query_one("#readme-scroll", VerticalScroll).scroll_up()
 
 
+class AddProjectScreen(ModalScreen[str | None]):
+    """Modal for adding a new project from GitHub SSH URL."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    AddProjectScreen {
+        align: center middle;
+    }
+    AddProjectScreen > Container {
+        width: 70%;
+        height: auto;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    AddProjectScreen .title {
+        text-align: center;
+        text-style: bold;
+        padding-bottom: 1;
+    }
+    AddProjectScreen .hint {
+        color: $text-muted;
+        padding-bottom: 1;
+    }
+    AddProjectScreen .error {
+        color: $error;
+        padding-top: 1;
+    }
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.error_label: Label | None = None
+
+    def compose(self) -> ComposeResult:
+        with Container():
+            yield Label("Add Project", classes="title")
+            yield Label("Enter GitHub SSH URL (e.g., git@github.com:owner/repo.git)", classes="hint")
+            yield Input(placeholder="git@github.com:owner/repo.git", id="url-input")
+            yield Label("", id="error-label", classes="error")
+
+    def on_mount(self) -> None:
+        self.query_one("#url-input", Input).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        error_label = self.query_one("#error-label", Label)
+        url = event.value.strip()
+        if url:
+            is_valid, message = validate_ssh_url(url)
+            if not is_valid:
+                error_label.update(message)
+            else:
+                error_label.update("")
+        else:
+            error_label.update("")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        url = event.value.strip()
+        if url:
+            is_valid, message = validate_ssh_url(url)
+            if is_valid:
+                self.dismiss(url)
+            else:
+                self.query_one("#error-label", Label).update(message)
+        else:
+            self.query_one("#error-label", Label).update("Please enter a URL")
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class HangarApp(App):
     """Main Hangar TUI application."""
 
@@ -392,6 +466,7 @@ class HangarApp(App):
         Binding("s", "open_status", "Status"),
         Binding("i", "open_readme", "Readme"),
         Binding("m", "move_project", "Move"),
+        Binding("a", "add_project", "Add"),
         Binding("tab", "toggle_view", "Toggle View"),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
@@ -550,6 +625,23 @@ class HangarApp(App):
             self._refresh_projects()
         except Exception as e:
             self.notify(f"Failed to move: {e}", severity="error")
+
+    def action_add_project(self) -> None:
+        if self.viewing_stash:
+            self.notify("Switch to Hangar view to add projects", severity="warning")
+            return
+        self.push_screen(AddProjectScreen(), callback=self._on_add_project)
+
+    def _on_add_project(self, url: str | None) -> None:
+        if not url:
+            return
+        self.notify(f"Cloning repository...")
+        success, message = clone_repo(url, HANGAR_PATH)
+        if success:
+            self.notify(f"Added project: {message}")
+            self._refresh_projects()
+        else:
+            self.notify(f"Clone failed: {message}", severity="error")
 
     def action_cursor_down(self) -> None:
         table = self.query_one("#project-table", DataTable)

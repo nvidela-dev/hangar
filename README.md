@@ -45,6 +45,7 @@ hangar
 | `t` | Project todos |
 | `s` | Project status |
 | `i` | View README |
+| `a` | Add project (clone from GitHub SSH URL) |
 | `m` | Move to Stash / Hangar |
 | `Tab` | Toggle Hangar/Stash view |
 | `r` | Refresh |
